@@ -26,6 +26,7 @@ if (! defined('ABSPATH')) {
 define('KASH_BACK_VERSION', '1.0.0');
 
 require_once __DIR__ . '/includes/class-installer.php';
+require_once __DIR__ . '/includes/class-affiliate-tracker.php';
 
 /**
  * Main plugin class.
@@ -58,8 +59,11 @@ final class KashBack
      */
     private function init(): void
     {
-        add_filter('woocommerce_product_add_to_cart_url', [$this, 'add_user_id_to_external_url'], 10, 2);
+        add_filter('woocommerce_product_add_to_cart_url', [$this, 'modify_external_product_url'], 10, 2);
         register_activation_hook(__FILE__, [$this, 'activate']);
+
+        $tracker = new \KashBack\AffiliateTracker();
+        $tracker->init();
     }
 
     /**
@@ -72,20 +76,30 @@ final class KashBack
     }
 
     /**
-     * Adds the user ID to the external product URL.
+     * Modifies the external product URL to include tracking parameters.
+     *
+     * Instead of adding the user_id directly, we create a redirect URL
+     * on our site that will log the click and then redirect to the external URL.
      *
      * @param  string      $url     The product URL.
      * @param  \WC_Product $product The product object.
      * @return string The modified product URL.
      */
-    public function add_user_id_to_external_url(string $url, \WC_Product $product): string
+    public function modify_external_product_url(string $url, \WC_Product $product): string
     {
-        if (! $product->is_type('external') || ! is_user_logged_in()) {
+        if (! $product->is_type('external')) {
             return $url;
         }
 
-        $user_id = get_current_user_id();
-        return add_query_arg('user_id', (string) $user_id, $url);
+        // We replace the direct external URL with a local URL that handles the tracking.
+        return add_query_arg(
+            [
+                'kash_back_redirect' => '1',
+                'product_id'         => $product->get_id(),
+                'internal_url'       => rawurlencode($product->get_permalink()),
+            ],
+            home_url('/')
+        );
     }
 
     /**
