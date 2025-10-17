@@ -134,6 +134,10 @@ class Kash_Back
         // Регистрация endpoint'ов
         add_action('init', array('Kash_Back', 'register_endpoints'), 0);
 
+        // AJAX обработчики для пагинации
+        add_action('wp_ajax_kash_back_load_orders', array($this, 'ajax_load_orders'));
+        add_action('wp_ajax_nopriv_kash_back_load_orders', array($this, 'ajax_load_orders')); // Для неавторизованных пользователей
+
         // Форсирование сброса правил перезаписи при активации плагина
         add_action('woocommerce_flush_rewrite_rules', array($this, 'flush_rewrite_rules'));
 
@@ -201,17 +205,20 @@ class Kash_Back
                 return;
             }
 
-            // Проверим, есть ли записи в таблице вообще
-            $total_records = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
-            error_log('Kash Back: Всего записей в таблице: ' . $total_records);
+            // Пагинация
+            $current_page = isset($_GET['kb_page']) ? max(1, intval($_GET['kb_page'])) : 1;
+            $per_page = 5; // Отображать 5 записей на странице
+            $offset = ($current_page - 1) * $per_page;
 
-            // Проверим, есть ли записи для текущего пользователя
-            $user_records = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table_name} WHERE user_id = %d", $user_id));
-            error_log('Kash Back: Записей для пользователя ' . $user_id . ': ' . $user_records);
+            // Подсчет общего количества записей для пользователя
+            $total_records = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table_name} WHERE user_id = %d", $user_id));
+            $total_pages = ceil($total_records / $per_page);
 
             $results = $wpdb->get_results($wpdb->prepare(
-                "SELECT * FROM {$table_name} WHERE user_id = %d ORDER BY date_created DESC, time_created DESC LIMIT 50",
-                $user_id
+                "SELECT * FROM {$table_name} WHERE user_id = %d ORDER BY date_created DESC, time_created DESC LIMIT %d OFFSET %d",
+                $user_id,
+                $per_page,
+                $offset
             ));
 
             error_log('Kash Back: Результат запроса: ' . ($results ? count($results) : 'null'));
@@ -229,35 +236,29 @@ class Kash_Back
                 echo '<th>Сумма</th>';
                 echo '</tr>';
                 echo '</thead>';
-                echo '<tbody>';
-
-                foreach ($results as $row) {
-                    error_log('Kash Back: Обработка строки - ID: ' . $row->id . ', user_id: ' . $row->user_id . ', external_url: ' . $row->external_url);
-                    echo '<tr>';
-                    echo '<td data-title="Дата">' . esc_html($row->date_created) . '</td>';
-                    echo '<td data-title="Время">' . esc_html($row->time_created) . '</td>';
-                    echo '<td data-title="Партнерская ссылка"><a href="' . esc_url($row->external_url) . '" target="_blank">Перейти</a></td>';
-                    // Получаем ID товара из внутреннего URL и отображаем название товара вместо "Перейти"
-                    $product_id = $row->product_id;
-                    $product_name = '';
-                    if ($product_id) {
-                        $product = wc_get_product($product_id);
-                        if ($product) {
-                            $product_name = $product->get_name();
-                        }
-                    }
-                    if (!empty($product_name)) {
-                        echo '<td data-title="Ссылка на товар"><a href="' . esc_url($row->internal_url) . '" target="_blank">' . esc_html($product_name) . '</a></td>';
-                    } else {
-                        echo '<td data-title="Ссылка на товар"><a href="' . esc_url($row->internal_url) . '" target="_blank">Перейти</a></td>';
-                    }
-                    echo '<td data-title="Статус">' . esc_html($row->status) . '</td>';
-                    echo '<td data-title="Сумма">' . esc_html($row->commission_amount) . '</td>';
-                    echo '</tr>';
-                }
-
+                echo '<tbody id="kash-back-orders-body">';
+                $this->render_orders_rows($results);
                 echo '</tbody>';
                 echo '</table>';
+
+                // Пагинация
+                if ($total_pages > 1) {
+                    echo '<div class="kash-back-pagination">';
+                    $pagination_args = array(
+                        'base' => add_query_arg('kb_page', '%#%'),
+                        'format' => '',
+                        'current' => $current_page,
+                        'total' => $total_pages,
+                        'prev_text' => '&larr;',
+                        'next_text' => '&rarr;',
+                        'type' => 'plain',
+                        'end_size' => 3,
+                        'mid_size' => 3
+                    );
+                    echo paginate_links($pagination_args);
+                    echo '</div>';
+                }
+
                 echo '</div>';
             } else {
                 echo '<p>У вас пока нет покупок.</p>';
@@ -268,6 +269,37 @@ class Kash_Back
             }
         } else {
             echo '<p>Войдите в систему, чтобы увидеть свои покупки.</p>';
+        }
+    }
+
+    /**
+     * Метод для отображения строк таблицы заказов
+     */
+    private function render_orders_rows($results)
+    {
+        foreach ($results as $row) {
+            error_log('Kash Back: Обработка строки - ID: ' . $row->id . ', user_id: ' . $row->user_id . ', external_url: ' . $row->external_url);
+            echo '<tr>';
+            echo '<td data-title="Дата">' . esc_html($row->date_created) . '</td>';
+            echo '<td data-title="Время">' . esc_html($row->time_created) . '</td>';
+            echo '<td data-title="Партнерская ссылка"><a href="' . esc_url($row->external_url) . '" target="_blank">Перейти</a></td>';
+            // Получаем ID товара из внутреннего URL и отображаем название товара вместо "Перейти"
+            $product_id = $row->product_id;
+            $product_name = '';
+            if ($product_id) {
+                $product = wc_get_product($product_id);
+                if ($product) {
+                    $product_name = $product->get_name();
+                }
+            }
+            if (!empty($product_name)) {
+                echo '<td data-title="Ссылка на товар"><a href="' . esc_url($row->internal_url) . '" target="_blank">' . esc_html($product_name) . '</a></td>';
+            } else {
+                echo '<td data-title="Ссылка на товар"><a href="' . esc_url($row->internal_url) . '" target="_blank">Перейти</a></td>';
+            }
+            echo '<td data-title="Статус">' . esc_html($row->status) . '</td>';
+            echo '<td data-title="Сумма">' . esc_html($row->commission_amount) . '</td>';
+            echo '</tr>';
         }
     }
 
@@ -565,6 +597,70 @@ class Kash_Back
         // Вставка записи в таблицу
         $result = $wpdb->insert($table_name, $insert_data, $insert_format);
     }
+
+    /**
+     * AJAX-обработчик для загрузки заказов с пагинацией
+     */
+    public function ajax_load_orders()
+    {
+        // Проверяем nonce
+        if (!wp_verify_nonce($_POST['security'], 'kash_back_load_orders_nonce')) {
+            wp_die(__('Неверный nonce.', 'kash-back'));
+        }
+
+        $user_id = get_current_user_id();
+        if ($user_id <= 0) {
+            wp_die(__('Пользователь не авторизован.', 'kash-back'));
+        }
+
+        $page = isset($_POST['page']) ? intval($_POST['page']) : 1;
+        $per_page = 5; // Отображать 5 записей на странице
+        $offset = ($page - 1) * $per_page;
+
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'affiliate_tracking';
+
+        // Подсчет общего количества записей для пользователя
+        $total_records = $wpdb->get_var($wpdb->prepare("SELECT COUNT(*) FROM {$table_name} WHERE user_id = %d", $user_id));
+        $total_pages = ceil($total_records / $per_page);
+
+        $results = $wpdb->get_results($wpdb->prepare(
+            "SELECT * FROM {$table_name} WHERE user_id = %d ORDER BY date_created DESC, time_created DESC LIMIT %d OFFSET %d",
+            $user_id,
+            $per_page,
+            $offset
+        ));
+
+        // Возвращаем HTML-код строк таблицы и информацию о пагинации
+        $response = array(
+            'success' => true,
+            'html' => '',
+            'pagination' => ''
+        );
+
+        if ($results && !empty($results)) {
+            ob_start();
+            $this->render_orders_rows($results);
+            $response['html'] = ob_get_clean();
+
+            // Генерируем HTML для пагинации
+            $pagination_args = array(
+                'base' => '#',
+                'format' => '',
+                'current' => $page,
+                'total' => $total_pages,
+                'prev_text' => '&larr;',
+                'next_text' => '&rarr;',
+                'type' => 'plain',
+                'end_size' => 3,
+                'mid_size' => 3,
+                'echo' => false // Не выводить, а вернуть как строку
+            );
+            $response['pagination'] = paginate_links($pagination_args);
+        }
+
+        wp_send_json($response);
+    }
 }
 
 /**
@@ -594,6 +690,16 @@ function kash_back_add_styles()
     global $wp;
     if (isset($wp->query_vars['kash-back'])) {
         wp_enqueue_style('kash-back-styles', plugin_dir_url(__FILE__) . 'assets/css/kash-back-styles.css', array(), '1.0');
+
+        // Подключаем JavaScript для AJAX-пагинации
+        wp_enqueue_script('kash-back-ajax-pagination', plugin_dir_url(__FILE__) . 'assets/js/kash-back-ajax.js', array('jquery'), '1.0', true);
+
+        // Передаем AJAX URL и nonce в JavaScript
+        wp_localize_script('kash-back-ajax-pagination', 'kash_back_ajax', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('kash_back_load_orders_nonce'),
+            'current_page' => isset($_GET['kb_page']) ? max(1, intval($_GET['kb_page'])) : 1
+        ));
     }
 }
 add_action('wp_enqueue_scripts', 'kash_back_add_styles');

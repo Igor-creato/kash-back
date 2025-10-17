@@ -1,0 +1,153 @@
+/* Стили для таблицы заказов в личном кабинете пользователя */
+
+.kash-back-purchases-table {
+    margin-bottom: 20px;
+}
+
+.kash-back-purchases-table .shop_table {
+    width: 100%;
+    border-collapse: collapse;
+    background-color: var(--bgcolor-white);
+    border: 1px solid var(--brdcolor-gray-300);
+    margin: 0 1.2em;
+    font-size: 1.3rem;
+    line-height: 1;
+    border-radius: var(--wd-brd-radius);
+}
+
+.kash-back-purchases-table .shop_table th {
+    background-color: var(--bgcolor-gray-200);
+    color: var(--color-gray-900);
+    font-weight: 600;
+    text-align: left;
+    padding: 12px 12px;
+    border: 1px solid var(--brdcolor-gray-300);
+    border-width: 0 1px 0;
+    vertical-align: middle;
+}
+
+.kash-back-purchases-table .shop_table td {
+    padding: 12px 12px;
+    border: 1px solid var(--brdcolor-gray-300);
+    border-width: 0 0 1px 0;
+    vertical-align: middle;
+}
+
+.kash-back-purchases-table .shop_table tr:nth-child(even) {
+    background-color: var(--bgcolor-gray-100);
+}
+
+.kash-back-purchases-table .shop_table tr:hover {
+    background-color: var(--bgcolor-gray-200);
+}
+
+.kash-back-purchases-table .shop_table td a {
+    color: var(--wd-primary-color);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.kash-back-purchases-table .shop_table td a:hover {
+    color: var(--wd-primary-color-hover);
+    opacity: .7;
+}
+
+/* Стили для пагинации */
+.kash-back-pagination {
+    text-align: center;
+    margin: 20px 0;
+    clear: both;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.kash-back-pagination .page-numbers {
+    display: inline-block;
+    padding: 8px 14px;
+    margin: 0 3px;
+    text-decoration: none;
+    border: 1px solid var(--brdcolor-gray-300);
+    color: var(--color-gray-500);
+    background-color: var(--bgcolor-white);
+    border-radius: var(--wd-brd-radius);
+    line-height: 1;
+    transition: all 0.25s ease;
+}
+
+.kash-back-pagination .page-numbers.current,
+.kash-back-pagination .page-numbers:hover {
+    background-color: var(--wd-primary-color);
+    color: #FFF;
+    border-color: var(--wd-primary-color);
+}
+
+.kash-back-pagination .page-numbers.dots {
+    border: none;
+    background-color: transparent;
+    padding: 8px 5px;
+}
+
+.kash-back-pagination .page-numbers.prev,
+.kash-back-pagination .page-numbers.next {
+    background-color: var(--bgcolor-gray-200);
+    border-color: var(--brdcolor-gray-300);
+    color: var(--color-gray-500);
+}
+
+.kash-back-pagination .page-numbers.prev:hover,
+.kash-back-pagination .page-numbers.next:hover {
+    background-color: var(--wd-primary-color);
+    color: #FFF;
+    border-color: var(--wd-primary-color);
+}
+
+/* Стили для адаптивности */
+@media (max-width: 768px) {
+    .kash-back-purchases-table .shop_table th,
+    .kash-back-purchases-table .shop_table td {
+        padding: 8px 6px;
+        font-size: 1.2rem;
+    }
+    
+    .kash-back-purchases-table .shop_table thead {
+        display: none;
+    }
+    
+    .kash-back-purchases-table .shop_table,
+    .kash-back-purchases-table .shop_table tbody,
+    .kash-back-purchases-table .shop_table tr,
+    .kash-back-purchases-table .shop_table td {
+        display: block;
+    }
+    
+    .kash-back-purchases-table .shop_table tr {
+        margin: 10px 0;
+        border: 1px solid var(--brdcolor-gray-300);
+        border-radius: var(--wd-brd-radius);
+        margin-bottom: 15px;
+    }
+    
+    .kash-back-purchases-table .shop_table td {
+        border: none;
+        border-bottom: 1px solid var(--brdcolor-gray-300);
+        position: relative;
+        padding: 10px 12px 10px 40%;
+        text-align: right;
+    }
+    
+    .kash-back-purchases-table .shop_table td:last-child {
+        border-bottom: none;
+    }
+    
+    .kash-back-purchases-table .shop_table td:before {
+        content: attr(data-title) ": ";
+        position: absolute;
+        left: 12px;
+        top: 10px;
+        font-weight: 600;
+        text-align: left;
+        width: 35%;
+        color: var(--color-gray-500);
+    }
+}
