@@ -121,6 +121,8 @@ class Kash_Back
         // Хуки для партнерских ссылок
         add_filter('woocommerce_product_add_to_cart_url', array($this, 'add_user_id_to_external_product_link'), 10, 2);
         add_filter('woocommerce_product_permalink', array($this, 'add_user_id_to_external_product_link'), 10, 2);
+        // Добавляем хук для обработки кнопок добавления в корзину в каталоге товаров
+        add_filter('woocommerce_loop_add_to_cart_link', array($this, 'add_user_id_to_external_product_loop_button'), 10, 2);
 
         // Хук для отслеживания переходов по внешним ссылкам
         add_action('template_redirect', array($this, 'track_affiliate_click'));
@@ -279,34 +281,98 @@ class Kash_Back
     }
 
     /**
+     * Флаг для предотвращения рекурсии
+     */
+    private $is_processing_permalink = false;
+
+    /**
      * Добавление ID пользователя к внешней партнерской ссылке
      */
     public function add_user_id_to_external_product_link($url, $product)
     {
-        // Проверяем, что это внешний партнерский товар
-        if ($product && $product->is_type('external')) {
-            // Получаем текущего пользователя
-            $current_user_id = get_current_user_id();
+        // Проверяем, что это внешний партнерский товар и URL не является уже tracking URL
+        if ($product && $product->is_type('external') && strpos($url, 'redirect=') === false && !$this->is_processing_permalink) {
+            // Устанавливаем флаг для предотвращения рекурсии
+            $this->is_processing_permalink = true;
 
-            // Если пользователь авторизован, добавляем его ID к внешней ссылке
-            if ($current_user_id > 0) {
-                $url = $this->add_parameter_to_url($url, 'user_id', $current_user_id);
+            try {
+                // Получаем текущего пользователя
+                $current_user_id = get_current_user_id();
+
+                // Получаем внешнюю ссылку товара
+                $external_url = $product->add_to_cart_url();
+
+                // Если пользователь авторизован, добавляем его ID к внешней ссылке
+                if ($current_user_id > 0) {
+                    $external_url = $this->add_parameter_to_url($external_url, 'user_id', $current_user_id);
+                }
+
+                // Получаем прямую ссылку на страницу товара (внутреннюю ссылку)
+                $product_url = get_permalink($product->get_id());
+
+                // Формируем URL для отслеживания, который будет перенаправлять на внешнюю ссылку
+                $tracking_url = home_url('/');
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'redirect', $external_url);
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'product_id', $product->get_id());
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'internal_url', $product_url);
+
+                // Всегда используем URL отслеживания, чтобы обеспечить запись в базу данных
+                return $tracking_url;
+            } finally {
+                // Сбрасываем флаг
+                $this->is_processing_permalink = false;
             }
-
-            // Получаем прямую ссылку на страницу товара (внутреннюю ссылку)
-            $product_url = $product ? get_permalink($product->get_id()) : $this->get_current_url();
-
-            // Формируем URL для отслеживания, который будет перенаправлять на внешнюю ссылку
-            $tracking_url = home_url('/');
-            $tracking_url = $this->add_parameter_to_url($tracking_url, 'redirect', $url);
-            $tracking_url = $this->add_parameter_to_url($tracking_url, 'product_id', $product->get_id());
-            $tracking_url = $this->add_parameter_to_url($tracking_url, 'internal_url', $product_url);
-
-            // Всегда используем URL отслеживания, чтобы обеспечить запись в базу данных
-            return $tracking_url;
         }
 
         return $url;
+    }
+
+    /**
+     * Добавление ID пользователя к кнопке внешнего партнерского товара в каталоге товаров
+     */
+    public function add_user_id_to_external_product_loop_button($link, $product)
+    {
+        // Проверяем, что это внешний партнерский товар и не идет обработка пермалинка
+        if ($product && $product->is_type('external') && !$this->is_processing_permalink) {
+            // Устанавливаем флаг для предотвращения рекурсии
+            $this->is_processing_permalink = true;
+
+            try {
+                // Получаем текущего пользователя
+                $current_user_id = get_current_user_id();
+
+                // Получаем внешнюю ссылку товара
+                $external_url = $product->add_to_cart_url();
+
+                // Если пользователь авторизован, добавляем его ID к внешней ссылке
+                if ($current_user_id > 0) {
+                    // Добавляем user_id к внешней ссылке
+                    $external_url = $this->add_parameter_to_url($external_url, 'user_id', $current_user_id);
+                }
+
+                // Получаем прямую ссылку на страницу товара (внутреннюю ссылку)
+                $product_url = get_permalink($product->get_id());
+
+                // Формируем URL для отслеживания, который будет перенаправлять на внешнюю ссылку
+                $tracking_url = home_url('/');
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'redirect', $external_url);
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'product_id', $product->get_id());
+                $tracking_url = $this->add_parameter_to_url($tracking_url, 'internal_url', $product_url);
+
+                // Создаем новую кнопку с tracking URL
+                $new_link = '<a href="' . esc_url($tracking_url) . '" class="button product_type_external">';
+                $new_link .= esc_html($product->single_add_to_cart_text()); // Используем правильный текст кнопки
+                $new_link .= '</a>';
+
+                // Всегда используем URL отслеживания, чтобы обеспечить запись в базу данных
+                return $new_link;
+            } finally {
+                // Сбрасываем флаг
+                $this->is_processing_permalink = false;
+            }
+        }
+
+        return $link;
     }
 
     /**
